@@ -1,0 +1,31 @@
+title,steam_app_id,category,subgenre,gameplay_tags,primary_attribute,exploration,combat,story,difficulty,replayability,competition
+Elden Ring,1245620,Action / Souls-like,Open World Soulslike,"Exploration,Combat,Difficulty,Build Variety",Exploration,95,95,75,95,85,10
+Dark Souls III,374320,Action / Souls-like,Soulslike,"Combat,Challenge,Bosses,Atmosphere",Combat,65,95,65,95,85,10
+Sekiro: Shadows Die Twice,814380,Action / Souls-like,Action Adventure,"Parrying,Precision Combat,Bosses,Stealth",Combat,55,100,65,100,75,10
+Lies of P,1627720,Action / Souls-like,Soulslike,"Parrying,Combat,Story,Challenge",Combat,55,95,80,90,75,10
+Devil May Cry 5,601150,Action / Souls-like,Character Action,"Combo Combat,Style,Replayability,Bosses",Combat,35,100,55,75,95,15
+The Witcher 3: Wild Hunt,292030,RPG / Open World,Action RPG,"Exploration,Story,Quests,Choices",Exploration,90,75,100,55,90,10
+Cyberpunk 2077,1091500,RPG / Open World,Action RPG,"Open World,Story,Builds,Choices",Story,85,80,95,55,85,10
+The Elder Scrolls V: Skyrim Special Edition,489830,RPG / Open World,Open World RPG,"Exploration,Quests,Freedom,Mods",Exploration,100,65,80,45,95,5
+Red Dead Redemption 2,1174180,RPG / Open World,Open World Adventure,"Exploration,Story,Immersion,Activities",Story,95,65,100,40,80,5
+Baldur's Gate 3,1086940,RPG / Open World,Turn-Based RPG,"Choices,Story,Strategy,Party Building",Story,80,55,100,60,95,10
+Resident Evil 4,2050650,Horror / Survival,Survival Horror,"Combat,Resource Management,Story,Tension",Combat,55,90,85,70,85,10
+Resident Evil 2,883710,Horror / Survival,Survival Horror,"Exploration,Puzzles,Resource Management,Tension",Exploration,75,75,85,65,80,5
+Dead Space,1693980,Horror / Survival,Sci-Fi Survival Horror,"Atmosphere,Combat,Exploration,Tension",Exploration,65,80,80,75,75,5
+Alan Wake 2,1087100,Horror / Survival,Psychological Horror,"Story,Investigation,Atmosphere,Puzzles",Story,70,60,100,55,70,5
+Silent Hill 2,2124490,Horror / Survival,Psychological Horror,"Story,Exploration,Puzzles,Atmosphere",Story,70,45,100,55,65,5
+DOOM Eternal,782330,FPS / Shooter,Arena FPS,"Fast Combat,Movement,Challenge,Skill",Combat,35,100,45,90,85,20
+Counter-Strike 2,730,FPS / Shooter,Tactical FPS,"Competitive,Teamwork,Aim,Ranked",Competition,20,90,20,80,90,100
+Apex Legends,1172470,FPS / Shooter,Hero Battle Royale,"Movement,Teamwork,Competitive,Abilities",Competition,45,90,45,75,85,100
+Titanfall 2,1237970,FPS / Shooter,Movement Shooter,"Movement,Campaign,Combat,Story",Combat,50,95,85,75,75,20
+Metro Exodus,412020,FPS / Shooter,Story FPS,"Exploration,Story,Stealth,Survival",Story,85,70,90,65,75,5
+Hades,1145360,Roguelike / Indie,Action Roguelike,"Replayability,Fast Combat,Story,Builds",Replayability,45,90,85,75,100,10
+Hollow Knight,367520,Roguelike / Indie,Metroidvania,"Exploration,Combat,Challenge,Atmosphere",Exploration,95,85,65,90,90,5
+Dead Cells,588650,Roguelike / Indie,Action Roguelite,"Fast Combat,Replayability,Builds,Challenge",Replayability,35,95,25,90,100,5
+Celeste,504230,Roguelike / Indie,Platformer,"Precision,Challenge,Story,Skill",Difficulty,30,45,85,100,85,5
+Slay the Spire,646570,Roguelike / Indie,Deckbuilding Roguelike,"Strategy,Replayability,Planning,Builds",Replayability,30,15,20,70,100,5
+Sid Meier's Civilization VI,289070,Strategy / Adventure,Turn-Based Strategy,"Strategy,Planning,Replayability,Empire Building",Replayability,65,20,25,65,100,15
+XCOM 2,268500,Strategy / Adventure,Turn-Based Tactics,"Strategy,Planning,Challenge,Team Management",Difficulty,35,45,35,90,90,10
+Portal 2,620,Strategy / Adventure,Puzzle Adventure,"Puzzles,Story,Co-op,Problem Solving",Story,45,10,90,45,75,5
+Subnautica,264710,Strategy / Adventure,Survival Adventure,"Exploration,Survival,Base Building,Atmosphere",Exploration,100,35,75,65,90,5
+It Takes Two,1426210,Strategy / Adventure,Co-op Adventure,"Co-op,Puzzles,Story,Platforming",Story,50,45,85,40,70,5

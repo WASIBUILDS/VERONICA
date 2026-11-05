@@ -13,12 +13,32 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+VERSION = "0.8"
+
 PAGES = [
     "Dashboard",
     "Game Discovery",
     "OVERDRIVE",
     "Gaming DNA",
     "Deals"
+]
+
+ATTRIBUTES = [
+    "Exploration",
+    "Combat",
+    "Story",
+    "Difficulty",
+    "Replayability",
+    "Competition"
+]
+
+ATTRIBUTE_COLUMNS = [
+    "exploration",
+    "combat",
+    "story",
+    "difficulty",
+    "replayability",
+    "competition"
 ]
 
 if "page" not in st.session_state:
@@ -47,65 +67,167 @@ def close_game():
 
 
 # ==========================================
-# GAME CATALOGUE
+# LOAD GAME CATALOGUE
 # ==========================================
 
-games = [
-    {
-        "name": "Elden Ring",
-        "genre": "RPG",
-        "tags": ["RPG", "Action", "Souls-like", "Adventure"],
-        "description": "Explore the Lands Between, face challenging enemies, "
-                       "and uncover the mysteries of an enormous fantasy world.",
-        "gameplay": ["Exploration", "Challenging Combat", "Open World"],
-        "style": "Open World Action RPG",
-        "image": "https://cdn.akamai.steamstatic.com/steam/apps/1245620/header.jpg",
-        "attributes": {
-            "Exploration": 95,
-            "Combat": 95,
-            "Story": 75,
-            "Difficulty": 95,
-            "Replayability": 85,
-            "Competition": 10
+@st.cache_data
+def load_catalogue():
+
+    path = "data/game_catalogue.csv"
+    df = pd.read_csv(path)
+
+    # Clean column names
+    df.columns = (
+        df.columns
+        .str.strip()
+        .str.lower()
+        .str.replace(" ", "_")
+        .str.replace("-", "_")
+    )
+
+    required_columns = [
+        "title",
+        "steam_app_id",
+        "category",
+        "subgenre",
+        "gameplay_tags",
+        "primary_attribute",
+        "exploration",
+        "combat",
+        "story",
+        "difficulty",
+        "replayability",
+        "competition"
+    ]
+
+    missing = [
+        col for col in required_columns
+        if col not in df.columns
+    ]
+
+    if missing:
+        raise ValueError(
+            f"Missing CSV columns: {', '.join(missing)}"
+        )
+
+    if df["title"].isnull().any():
+        raise ValueError("Some games have missing titles.")
+
+    if df["title"].duplicated().any():
+        raise ValueError("Duplicate game titles detected.")
+
+    for column in ATTRIBUTE_COLUMNS:
+
+        df[column] = pd.to_numeric(
+            df[column],
+            errors="raise"
+        )
+
+        if not df[column].between(0, 100).all():
+            raise ValueError(
+                f"Invalid attribute scores in {column}"
+            )
+
+    if df["steam_app_id"].isnull().any():
+        raise ValueError("Missing Steam App IDs detected.")
+
+    return df
+
+
+try:
+    catalogue_df = load_catalogue()
+
+except Exception as error:
+    st.error(f"Catalogue loading failed: {error}")
+    st.stop()
+
+
+# ==========================================
+# DATA PROCESSING
+# ==========================================
+
+def split_values(value):
+
+    if pd.isna(value):
+        return []
+
+    return [
+        item.strip()
+        for item in str(value).split(";")
+        if item.strip()
+    ]
+
+
+def build_games(df):
+
+    catalogue = []
+
+    for _, row in df.iterrows():
+
+        subgenres = split_values(row["subgenre"])
+        gameplay = split_values(row["gameplay_tags"])
+
+        category_tags = [
+            item.strip()
+            for item in str(row["category"]).split("/")
+            if item.strip()
+        ]
+
+        all_tags = list(dict.fromkeys(
+            category_tags + subgenres + gameplay
+        ))
+
+        attributes = {
+            attribute: int(row[column])
+            for attribute, column in zip(
+                ATTRIBUTES,
+                ATTRIBUTE_COLUMNS
+            )
         }
-    },
-    {
-        "name": "Resident Evil 4",
-        "genre": "Horror",
-        "tags": ["Horror", "Action", "Adventure", "Survival"],
-        "description": "A survival horror adventure combining intense combat, "
-                       "atmospheric environments, and cinematic storytelling.",
-        "gameplay": ["Survival", "Story-driven", "Action"],
-        "style": "Survival Horror",
-        "image": "https://cdn.akamai.steamstatic.com/steam/apps/2050650/header.jpg",
-        "attributes": {
-            "Exploration": 55,
-            "Combat": 90,
-            "Story": 85,
-            "Difficulty": 70,
-            "Replayability": 75,
-            "Competition": 10
-        }
-    },
-    {
-        "name": "Hades",
-        "genre": "Roguelike",
-        "tags": ["Action", "RPG", "Roguelike"],
-        "description": "Battle your way out of the underworld through "
-                       "fast-paced combat and replayable encounters.",
-        "gameplay": ["Fast-paced", "Challenging Combat", "Replayability"],
-        "style": "Roguelike Action",
-        "image": "https://cdn.akamai.steamstatic.com/steam/apps/1145360/header.jpg",
-        "attributes": {
-            "Exploration": 40,
-            "Combat": 90,
-            "Story": 70,
-            "Difficulty": 80,
-            "Replayability": 100,
-            "Competition": 5
-        }
-    }
-]
+
+        app_id = str(int(row["steam_app_id"]))
+
+        primary_attribute = str(
+            row["primary_attribute"]
+        ).strip()
+
+        catalogue.append({
+
+            "name": str(row["title"]),
+
+            "genre": subgenres[0] if subgenres else "Unknown",
+
+            "subgenres": subgenres,
+
+            "category": str(row["category"]),
+
+            "primary_attribute": primary_attribute,
+
+            "tags": all_tags,
+
+            "description": (
+                f"Explore {row['title']}, "
+                f"a {', '.join(subgenres) if subgenres else 'gaming'} experience "
+                f"featuring {', '.join(gameplay[:3]) if gameplay else 'varied gameplay'}."
+            ),
+
+            "gameplay": gameplay,
+
+            "style": " / ".join(subgenres),
+
+            "image": (
+                f"https://cdn.akamai.steamstatic.com/"
+                f"steam/apps/{app_id}/header.jpg"
+            ),
+
+            "attributes": attributes
+
+        })
+
+    return catalogue
+
+
+games = build_games(catalogue_df)
 
 
 # ==========================================
@@ -115,44 +237,80 @@ games = [
 def calculate_dna(preferences, dislikes):
 
     scores = {
-        "Exploration": 50,
-        "Combat": 50,
-        "Story": 50,
-        "Difficulty": 50,
-        "Replayability": 50,
-        "Competition": 50
+        attribute: 50
+        for attribute in ATTRIBUTES
     }
 
     positive_mapping = {
-        "Exploration": ["Exploration", "Open World"],
-        "Combat": ["Challenging Combat", "Fast-paced"],
-        "Story": ["Story-driven", "Lore"],
-        "Difficulty": ["Challenging Combat", "Hard Difficulty"],
-        "Replayability": ["Replayability", "Character Progression"],
-        "Competition": ["Competitive", "Multiplayer"]
+
+        "Exploration": [
+            "Exploration",
+            "Open World"
+        ],
+
+        "Combat": [
+            "Challenging Combat",
+            "Fast-paced"
+        ],
+
+        "Story": [
+            "Story-driven",
+            "Lore"
+        ],
+
+        "Difficulty": [
+            "Challenging Combat",
+            "Hard Difficulty"
+        ],
+
+        "Replayability": [
+            "Replayability",
+            "Character Progression"
+        ],
+
+        "Competition": [
+            "Competitive",
+            "Multiplayer"
+        ]
+
     }
 
     negative_mapping = {
+
         "Exploration": ["Linear Levels"],
+
         "Combat": ["Combat-heavy Gameplay"],
+
         "Story": ["Story-heavy Gameplay"],
+
         "Difficulty": ["High Difficulty"],
+
         "Replayability": ["Repetitive Runs"],
+
         "Competition": ["Competitive Multiplayer"]
+
     }
 
     for attribute, keywords in positive_mapping.items():
+
         for keyword in keywords:
+
             if keyword in preferences:
                 scores[attribute] += 20
 
     for attribute, keywords in negative_mapping.items():
+
         for keyword in keywords:
+
             if keyword in dislikes:
                 scores[attribute] -= 20
 
     for attribute in scores:
-        scores[attribute] = max(0, min(100, scores[attribute]))
+
+        scores[attribute] = max(
+            0,
+            min(100, scores[attribute])
+        )
 
     return scores
 
@@ -172,22 +330,18 @@ def calculate_recommendations(dna, catalogue):
 
         game_scores = game["attributes"]
 
-        # Compare player preferences with game attributes.
-        differences = []
-
-        for attribute in player_scores:
-
-            difference = abs(
-                player_scores[attribute] - game_scores[attribute]
+        differences = [
+            abs(
+                player_scores[attribute]
+                - game_scores[attribute]
             )
-
-            differences.append(difference)
+            for attribute in player_scores
+        ]
 
         attribute_match = 100 - (
             sum(differences) / len(differences)
         )
 
-        # Compare preferred genres with game genres.
         if favourite_genres:
 
             genre_matches = sum(
@@ -199,7 +353,6 @@ def calculate_recommendations(dna, catalogue):
                 genre_matches / len(favourite_genres)
             ) * 100
 
-            # Attributes contribute 75%, genres 25%.
             final_score = (
                 attribute_match * 0.75
                 + genre_match * 0.25
@@ -209,21 +362,23 @@ def calculate_recommendations(dna, catalogue):
 
             final_score = attribute_match
 
-        # Find the strongest matching gameplay attributes.
-        aligned_attributes = []
-
-        for attribute in player_scores:
-
+        aligned_attributes = [
+            attribute
+            for attribute in player_scores
             if (
                 player_scores[attribute] >= 65
                 and game_scores[attribute] >= 65
-            ):
-                aligned_attributes.append(attribute)
+            )
+        ]
 
         results.append({
+
             "game": game,
+
             "score": round(final_score),
+
             "aligned": aligned_attributes
+
         })
 
     return sorted(
@@ -242,8 +397,12 @@ st.markdown("""
 
 .stApp {
     background:
-        linear-gradient(rgba(8,10,20,0.94), rgba(8,10,20,0.96)),
+        linear-gradient(
+            rgba(8,10,20,0.94),
+            rgba(8,10,20,0.96)
+        ),
         url("https://images.unsplash.com/photo-1542751371-adc38448a05e");
+
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
@@ -276,6 +435,7 @@ p, label, span {
         rgba(65,35,110,0.75),
         rgba(15,20,42,0.85)
     );
+
     border: 1px solid #514078;
     border-radius: 16px;
     padding: 30px;
@@ -306,14 +466,24 @@ p, label, span {
 with st.sidebar:
 
     st.markdown("# 🎮 VERONICA")
+
     st.caption("GAME DISCOVERY & PERFORMANCE")
-    st.divider()
-
-    st.radio("NAVIGATION", PAGES, key="page")
 
     st.divider()
+
+    st.radio(
+        "NAVIGATION",
+        PAGES,
+        key="page"
+    )
+
+    st.divider()
+
     st.caption("DEVELOPMENT PREVIEW")
-    st.caption("Version 0.5")
+
+    st.caption(f"Version {VERSION}")
+
+    st.caption(f"{len(games)} games loaded")
 
 
 page = st.session_state.page
@@ -339,7 +509,10 @@ if page == "Dashboard":
     with col1:
 
         st.markdown("### 🎯 Game Discovery")
-        st.write("Find games that match your gaming preferences.")
+
+        st.write(
+            "Find games that match your gaming preferences."
+        )
 
         st.button(
             "EXPLORE GAMES",
@@ -351,7 +524,10 @@ if page == "Dashboard":
     with col2:
 
         st.markdown("### ⚡ OVERDRIVE")
-        st.write("Explore hardware-aware FPS predictions.")
+
+        st.write(
+            "Explore hardware-aware FPS predictions."
+        )
 
         st.button(
             "ANALYZE PERFORMANCE",
@@ -361,6 +537,7 @@ if page == "Dashboard":
         )
 
     st.divider()
+
     st.subheader("VERONICA MODULES")
 
     c1, c2, c3 = st.columns(3)
@@ -377,6 +554,30 @@ if page == "Dashboard":
         st.markdown("**🧬 Gaming DNA**")
         st.caption("Understand your gaming preferences.")
 
+    st.divider()
+
+    st.subheader("CATALOGUE OVERVIEW")
+
+    c1, c2, c3 = st.columns(3)
+
+    c1.metric("TOTAL GAMES", len(games))
+
+    c2.metric(
+        "CATEGORIES",
+        catalogue_df["category"].nunique()
+    )
+
+    unique_subgenres = {
+        genre
+        for value in catalogue_df["subgenre"]
+        for genre in split_values(value)
+    }
+
+    c3.metric(
+        "UNIQUE SUBGENRES",
+        len(unique_subgenres)
+    )
+
 
 # ==========================================
 # GAME DISCOVERY
@@ -386,80 +587,132 @@ elif page == "Game Discovery":
 
     selected_name = st.session_state.selected_game
 
-    # --------------------------------------
     # GAME DETAILS
-    # --------------------------------------
 
     if selected_name:
 
         game = next(
-            (g for g in games if g["name"] == selected_name),
+            (
+                item for item in games
+                if item["name"] == selected_name
+            ),
             None
         )
 
         if game:
 
-            st.button("← BACK TO DISCOVERY", on_click=close_game)
+            st.button(
+                "← BACK TO DISCOVERY",
+                on_click=close_game
+            )
 
             st.divider()
 
             col1, col2 = st.columns([1.1, 1.4])
 
             with col1:
-                st.image(game["image"], use_container_width=True)
+
+                st.image(
+                    game["image"],
+                    use_container_width=True
+                )
 
             with col2:
 
                 st.title(game["name"])
-                st.markdown(f"**{game['style']}**")
+
+                st.markdown(
+                    f"**{game['style']}**"
+                )
+
                 st.write(game["description"])
 
-                st.markdown("**Genres**")
+                st.markdown("**Category**")
+                st.write(game["category"])
+
+                st.markdown("**Primary Gameplay Attribute**")
+                st.write(game["primary_attribute"])
+
+                st.markdown("**Subgenres and Tags**")
                 st.write(" • ".join(game["tags"]))
 
                 st.markdown("**Gameplay Characteristics**")
-                st.write(" • ".join(game["gameplay"]))
+                st.write(
+                    " • ".join(game["gameplay"])
+                    if game["gameplay"]
+                    else "Not specified"
+                )
 
                 if st.button("ADD TO WATCHLIST"):
 
                     if game["name"] not in st.session_state.watchlist:
-                        st.session_state.watchlist.append(game["name"])
 
-                    st.success("Added to your watchlist!")
+                        st.session_state.watchlist.append(
+                            game["name"]
+                        )
+
+                    st.success(
+                        "Added to your watchlist!"
+                    )
 
             st.divider()
-            st.subheader("GAME PROFILE")
 
-            st.write("Primary Genre:", game["genre"])
-            st.write("Gameplay Style:", game["style"])
+            st.subheader("GAME ATTRIBUTE PROFILE")
 
-            st.info("More game attributes and performance data will be added later.")
+            profile = pd.DataFrame.from_dict(
+                game["attributes"],
+                orient="index",
+                columns=["Score"]
+            )
 
-    # --------------------------------------
+            st.bar_chart(profile)
+
+            st.caption(
+                "Initial editorial estimates, not measured game statistics."
+            )
+
     # DISCOVERY BROWSING
-    # --------------------------------------
 
     else:
 
         st.title("🎮 GAME DISCOVERY")
-        st.caption("Explore games. Discover your next obsession.")
 
-        # PERSONALIZED RECOMMENDATIONS
+        st.caption(
+            "Explore games. Discover your next obsession."
+        )
 
         dna = st.session_state.gaming_dna
 
         if dna:
 
             st.divider()
+
             st.subheader("🧬 RECOMMENDED FOR YOU")
 
             st.caption(
                 "Ranked using your Gaming DNA and preferred genres."
             )
 
-            recommendations = calculate_recommendations(dna, games)
+            recommendations = calculate_recommendations(
+                dna,
+                games
+            )
 
-            for rank, item in enumerate(recommendations, start=1):
+            show_all = st.checkbox(
+                "Show all 30 ranked recommendations",
+                value=False
+            )
+
+            visible_recommendations = (
+                recommendations
+                if show_all
+                else recommendations[:5]
+            )
+
+            for rank, item in enumerate(
+                visible_recommendations,
+                start=1
+            ):
 
                 game = item["game"]
                 score = item["score"]
@@ -470,6 +723,7 @@ elif page == "Game Discovery":
                     col1, col2 = st.columns([1, 2])
 
                     with col1:
+
                         st.image(
                             game["image"],
                             use_container_width=True
@@ -477,7 +731,9 @@ elif page == "Game Discovery":
 
                     with col2:
 
-                        st.markdown(f"### #{rank}  {game['name']}")
+                        st.markdown(
+                            f"### #{rank} {game['name']}"
+                        )
 
                         st.metric(
                             "DNA MATCH",
@@ -518,7 +774,7 @@ elif page == "Game Discovery":
                 args=("Gaming DNA",)
             )
 
-        # GENERAL GAME BROWSING
+        # BROWSING FILTERS
 
         st.divider()
 
@@ -529,12 +785,28 @@ elif page == "Game Discovery":
             placeholder="Search for a game..."
         )
 
+        categories = [
+            "All Categories"
+        ] + sorted(
+            catalogue_df["category"].unique().tolist()
+        )
+
+        selected_category = st.selectbox(
+            "Explore by category",
+            categories
+        )
+
+        all_genres = sorted({
+            genre
+            for value in catalogue_df["subgenre"]
+            for genre in split_values(value)
+        })
+
+        genre_options = ["All Genres"] + all_genres
+
         selected_genre = st.selectbox(
-            "Explore by genre",
-            [
-                "All Genres", "Action", "RPG", "Souls-like",
-                "Horror", "Adventure", "Roguelike", "Survival"
-            ]
+            "Filter by subgenre",
+            genre_options
         )
 
         filtered_games = []
@@ -542,17 +814,34 @@ elif page == "Game Discovery":
         for game in games:
 
             matches_search = (
-                search.lower() in game["name"].lower()
+                search.lower() in (
+                    game["name"] + " " +
+                    " ".join(game["tags"])
+                ).lower()
                 if search else True
+            )
+
+            matches_category = (
+                selected_category == "All Categories"
+                or selected_category == game["category"]
             )
 
             matches_genre = (
                 selected_genre == "All Genres"
-                or selected_genre in game["tags"]
+                or selected_genre in game["subgenres"]
             )
 
-            if matches_search and matches_genre:
+            if (
+                matches_search
+                and matches_category
+                and matches_genre
+            ):
+
                 filtered_games.append(game)
+
+        st.caption(
+            f"Showing {len(filtered_games)} of {len(games)} games"
+        )
 
         if filtered_games:
 
@@ -562,11 +851,24 @@ elif page == "Game Discovery":
 
                 with columns[index % 3]:
 
-                    st.markdown('<div class="card">', unsafe_allow_html=True)
+                    st.markdown(
+                        '<div class="card">',
+                        unsafe_allow_html=True
+                    )
 
-                    st.image(game["image"], use_container_width=True)
-                    st.markdown(f"### {game['name']}")
-                    st.caption(" • ".join(game["tags"]))
+                    st.image(
+                        game["image"],
+                        use_container_width=True
+                    )
+
+                    st.markdown(
+                        f"### {game['name']}"
+                    )
+
+                    st.caption(
+                        " • ".join(game["tags"][:4])
+                    )
+
                     st.write(game["description"])
 
                     st.button(
@@ -577,13 +879,19 @@ elif page == "Game Discovery":
                         args=(game["name"],)
                     )
 
-                    st.markdown("</div>", unsafe_allow_html=True)
+                    st.markdown(
+                        "</div>",
+                        unsafe_allow_html=True
+                    )
 
         else:
 
-            st.info("No games found. Try another search or genre.")
+            st.info(
+                "No games found. Try another search or filter."
+            )
 
         st.divider()
+
         st.subheader("⭐ YOUR WATCHLIST")
 
         if st.session_state.watchlist:
@@ -593,7 +901,9 @@ elif page == "Game Discovery":
 
         else:
 
-            st.caption("Your watchlist is currently empty.")
+            st.caption(
+                "Your watchlist is currently empty."
+            )
 
 
 # ==========================================
@@ -603,7 +913,10 @@ elif page == "Game Discovery":
 elif page == "OVERDRIVE":
 
     st.title("⚡ OVERDRIVE")
-    st.caption("Hardware-aware gaming performance analysis.")
+
+    st.caption(
+        "Hardware-aware gaming performance analysis."
+    )
 
     st.subheader("YOUR HARDWARE")
 
@@ -639,6 +952,7 @@ elif page == "OVERDRIVE":
         )
 
     st.divider()
+
     st.subheader("GAME CONFIGURATION")
 
     game_name = st.text_input(
@@ -651,7 +965,10 @@ elif page == "OVERDRIVE":
         ["Low", "Medium", "High", "Ultra"]
     )
 
-    if st.button("PREDICT FPS", use_container_width=True):
+    if st.button(
+        "PREDICT FPS",
+        use_container_width=True
+    ):
 
         if cpu and gpu and game_name:
 
@@ -662,10 +979,15 @@ elif page == "OVERDRIVE":
 
         else:
 
-            st.warning("Please enter your CPU, GPU and game name.")
+            st.warning(
+                "Please enter your CPU, GPU and game name."
+            )
 
     st.divider()
-    st.caption("OVERDRIVE prediction engine: Under development.")
+
+    st.caption(
+        "OVERDRIVE prediction engine: Under development."
+    )
 
 
 # ==========================================
@@ -675,7 +997,10 @@ elif page == "OVERDRIVE":
 elif page == "Gaming DNA":
 
     st.title("🧬 GAMING DNA")
-    st.caption("Your preferences. Your gaming identity.")
+
+    st.caption(
+        "Your preferences. Your gaming identity."
+    )
 
     st.markdown("""
     <div class="hero">
@@ -691,8 +1016,14 @@ elif page == "Gaming DNA":
     favourite_genres = st.multiselect(
         "Which genres do you enjoy?",
         [
-            "Action", "RPG", "Horror", "Adventure",
-            "FPS", "Strategy", "Survival", "Roguelike"
+            "Action",
+            "RPG",
+            "Horror",
+            "Adventure",
+            "FPS",
+            "Strategy",
+            "Survival",
+            "Roguelike"
         ],
         default=dna.get("genres", [])
     )
@@ -704,6 +1035,7 @@ elif page == "Gaming DNA":
     )
 
     st.divider()
+
     st.subheader("2. Gameplay Preferences")
 
     preferences = st.multiselect(
@@ -739,19 +1071,34 @@ elif page == "Gaming DNA":
 
     st.divider()
 
-    if st.button("UPDATE MY GAMING DNA", use_container_width=True):
+    if st.button(
+        "UPDATE MY GAMING DNA",
+        use_container_width=True
+    ):
 
-        scores = calculate_dna(preferences, dislikes)
+        scores = calculate_dna(
+            preferences,
+            dislikes
+        )
 
         st.session_state.gaming_dna = {
+
             "genres": favourite_genres,
+
             "favourite_game": favourite_game,
+
             "preferences": preferences,
+
             "dislikes": dislikes,
+
             "scores": scores
+
         }
 
-        st.success("Gaming DNA updated successfully!")
+        st.success(
+            "Gaming DNA updated successfully!"
+        )
+
         st.rerun()
 
     # PROFILE DISPLAY
@@ -761,15 +1108,26 @@ elif page == "Gaming DNA":
         dna = st.session_state.gaming_dna
 
         st.divider()
+
         st.subheader("🧬 YOUR PLAYER PROFILE")
 
         st.markdown("**Favourite Genres**")
-        st.write(", ".join(dna["genres"]) if dna["genres"] else "Not specified")
+
+        st.write(
+            ", ".join(dna["genres"])
+            if dna["genres"]
+            else "Not specified"
+        )
 
         st.markdown("**Favourite Game**")
-        st.write(dna["favourite_game"] or "Not specified")
+
+        st.write(
+            dna["favourite_game"]
+            or "Not specified"
+        )
 
         st.divider()
+
         st.subheader("PLAYER ATTRIBUTE SCORES")
 
         profile = pd.DataFrame.from_dict(
@@ -786,7 +1144,9 @@ elif page == "Gaming DNA":
         )
 
         st.divider()
+
         st.subheader("PROFILE DATA")
+
         st.json(dna)
 
 
@@ -797,7 +1157,10 @@ elif page == "Gaming DNA":
 elif page == "Deals":
 
     st.title("🏷️ GAME DEALS")
-    st.caption("Find deals for the games you want.")
+
+    st.caption(
+        "Find deals for the games you want."
+    )
 
     desired_game = st.text_input(
         "Search for a game",
@@ -809,15 +1172,23 @@ elif page == "Deals":
         if desired_game.strip():
 
             if desired_game not in st.session_state.watchlist:
-                st.session_state.watchlist.append(desired_game)
 
-            st.success(f"{desired_game} added to your watchlist!")
+                st.session_state.watchlist.append(
+                    desired_game
+                )
+
+            st.success(
+                f"{desired_game} added to your watchlist!"
+            )
 
         else:
 
-            st.warning("Enter a game name first.")
+            st.warning(
+                "Enter a game name first."
+            )
 
     st.divider()
+
     st.subheader("YOUR WATCHLIST")
 
     if st.session_state.watchlist:
@@ -827,7 +1198,9 @@ elif page == "Deals":
 
     else:
 
-        st.caption("No games added yet.")
+        st.caption(
+            "No games added yet."
+        )
 
     st.divider()
 
