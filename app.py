@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-VERSION = "0.8"
+VERSION = "0.9"
 
 PAGES = [
     "Dashboard",
@@ -319,10 +319,122 @@ def calculate_dna(preferences, dislikes):
 # RECOMMENDATION ENGINE
 # ==========================================
 
+def normalize_text(value):
+    return " ".join(
+        str(value).lower().replace("-", " ").replace("_", " ").split()
+    )
+
+
+def preference_matches_tags(preference, gameplay_tags):
+
+    aliases = {
+
+        "exploration": [
+            "exploration",
+            "exploration focused"
+        ],
+
+        "open world": [
+            "open world",
+            "open world exploration"
+        ],
+
+        "challenging combat": [
+            "challenging combat",
+            "precision combat",
+            "soulslike",
+            "souls like",
+            "boss fights",
+            "combat"
+        ],
+
+        "story driven": [
+            "story",
+            "narrative",
+            "story driven"
+        ],
+
+        "lore": [
+            "lore",
+            "worldbuilding",
+            "world building"
+        ],
+
+        "fast paced": [
+            "fast paced",
+            "action",
+            "high speed combat"
+        ],
+
+        "replayability": [
+            "replayability",
+            "replayable",
+            "roguelike"
+        ],
+
+        "character progression": [
+            "progression",
+            "character builds",
+            "character progression",
+            "rpg"
+        ],
+
+        "competitive": [
+            "competitive",
+            "pvp",
+            "esports"
+        ],
+
+        "multiplayer": [
+            "multiplayer",
+            "co op",
+            "cooperative",
+            "pvp"
+        ],
+
+        "hard difficulty": [
+            "hard difficulty",
+            "difficult",
+            "high difficulty",
+            "soulslike",
+            "souls like"
+        ]
+
+    }
+
+    preference_key = normalize_text(preference)
+    wanted_terms = aliases.get(preference_key, [preference_key])
+
+    normalized_tags = {
+        normalize_text(tag): str(tag)
+        for tag in gameplay_tags
+    }
+
+    matches = []
+
+    for normalized_tag, original_tag in normalized_tags.items():
+
+        if any(
+            term == normalized_tag
+            or term in normalized_tag
+            or normalized_tag in term
+            for term in wanted_terms
+        ):
+
+            matches.append(original_tag)
+
+    return list(dict.fromkeys(matches))
+
+
 def calculate_recommendations(dna, catalogue):
 
     player_scores = dna["scores"]
-    favourite_genres = dna["genres"]
+
+    favourite_genres = dna.get("genres", [])
+
+    favourite_subgenres = dna.get("subgenres", [])
+
+    preferences = dna.get("preferences", [])
 
     results = []
 
@@ -330,54 +442,255 @@ def calculate_recommendations(dna, catalogue):
 
         game_scores = game["attributes"]
 
+        # 1. Overall player-to-game attribute similarity
+
         differences = [
+
             abs(
                 player_scores[attribute]
                 - game_scores[attribute]
             )
+
             for attribute in player_scores
+
         ]
 
         attribute_match = 100 - (
             sum(differences) / len(differences)
         )
 
+        # 2. Broad genre overlap
+
+        genre_match = 0
+        matched_genres = []
+
         if favourite_genres:
 
-            genre_matches = sum(
-                1 for genre in favourite_genres
-                if genre in game["tags"]
-            )
+            game_category_terms = {
+                normalize_text(tag)
+                for tag in game.get("tags", [])
+            }
+
+            matched_genres = [
+
+                genre for genre in favourite_genres
+
+                if normalize_text(genre) in game_category_terms
+
+            ]
 
             genre_match = (
-                genre_matches / len(favourite_genres)
+                len(matched_genres) / len(favourite_genres)
             ) * 100
 
-            final_score = (
-                attribute_match * 0.75
-                + genre_match * 0.25
-            )
+        # 3. Specific subgenre overlap
 
-        else:
+        game_subgenres = game.get("subgenres", [])
 
-            final_score = attribute_match
+        game_subgenre_terms = {
+            normalize_text(item)
+            for item in game_subgenres
+        }
 
-        aligned_attributes = [
-            attribute
-            for attribute in player_scores
-            if (
-                player_scores[attribute] >= 65
-                and game_scores[attribute] >= 65
-            )
+        matched_subgenres = [
+
+            item for item in favourite_subgenres
+
+            if normalize_text(item) in game_subgenre_terms
+
         ]
+
+        subgenre_match = (
+
+            len(matched_subgenres) / len(favourite_subgenres) * 100
+
+            if favourite_subgenres else 0
+
+        )
+
+        # 4. Gameplay preference matching
+
+        matched_preferences = {}
+
+        for preference in preferences:
+
+            matches = preference_matches_tags(
+                preference,
+                game.get("gameplay", [])
+            )
+
+            if matches:
+                matched_preferences[preference] = matches
+
+        gameplay_match = (
+
+            len(matched_preferences) / len(preferences) * 100
+
+            if preferences else 0
+
+        )
+
+        # 5. Primary attribute influence
+
+        primary_attribute = normalize_text(
+            game.get("primary_attribute", "")
+        ).title()
+
+        primary_attribute_affinity = (
+
+            player_scores[primary_attribute]
+
+            if primary_attribute in player_scores
+
+            else 50
+
+        )
+
+        # 6. Weighted recommendation score
+
+        components = [
+
+            (attribute_match, 0.60),
+
+            (primary_attribute_affinity, 0.05)
+
+        ]
+
+        if favourite_genres:
+            components.append((genre_match, 0.15))
+
+        if favourite_subgenres:
+            components.append((subgenre_match, 0.10))
+
+        if preferences:
+            components.append((gameplay_match, 0.10))
+
+        total_weight = sum(
+            weight for _, weight in components
+        )
+
+        final_score = sum(
+            score * weight
+            for score, weight in components
+        ) / total_weight
+
+        # 7. Generate recommendation explanations
+
+        reasons = []
+
+        if matched_subgenres:
+
+            reasons.append(
+                "Subgenre match: "
+                + ", ".join(matched_subgenres[:3])
+            )
+
+        if matched_genres:
+
+            reasons.append(
+                "Genre match: "
+                + ", ".join(matched_genres[:3])
+            )
+
+        if matched_preferences:
+
+            details = [
+
+                f"{pref} ({', '.join(tags[:2])})"
+
+                for pref, tags in list(
+                    matched_preferences.items()
+                )[:3]
+
+            ]
+
+            reasons.append(
+                "Gameplay match: " + "; ".join(details)
+            )
+
+        if (
+            primary_attribute in player_scores
+            and primary_attribute_affinity >= 65
+        ):
+
+            reasons.append(
+                f"Primary attribute match: "
+                f"{game.get('primary_attribute')} "
+                f"aligns with your {primary_attribute} preference"
+            )
+
+        # Find the closest attribute similarities
+
+        closest_attributes = sorted(
+
+            player_scores,
+
+            key=lambda attr: abs(
+                player_scores[attr] - game_scores[attr]
+            )
+
+        )
+
+        strong_attributes = [
+
+            attr for attr in closest_attributes
+
+            if (
+                player_scores[attr] >= 60
+                and game_scores[attr] >= 60
+            )
+
+        ][:2]
+
+        if strong_attributes:
+
+            reasons.append(
+                "Attribute alignment: "
+                + ", ".join(strong_attributes)
+            )
+
+        if not reasons:
+
+            reasons.append(
+                "Broad attribute similarity to your Gaming DNA"
+            )
 
         results.append({
 
             "game": game,
 
-            "score": round(final_score),
+            "score": round(
+                max(0, min(100, final_score))
+            ),
 
-            "aligned": aligned_attributes
+            "aligned": strong_attributes,
+
+            "reasons": reasons,
+
+            "breakdown": {
+
+                "Attributes": round(attribute_match),
+
+                "Primary attribute": round(
+                    primary_attribute_affinity
+                ),
+
+                "Genre": (
+                    round(genre_match)
+                    if favourite_genres else None
+                ),
+
+                "Subgenre": (
+                    round(subgenre_match)
+                    if favourite_subgenres else None
+                ),
+
+                "Gameplay": (
+                    round(gameplay_match)
+                    if preferences else None
+                )
+
+            }
 
         })
 
@@ -543,14 +856,17 @@ if page == "Dashboard":
     c1, c2, c3 = st.columns(3)
 
     with c1:
+
         st.markdown("**🎮 Discovery**")
         st.caption("Personalized recommendations.")
 
     with c2:
+
         st.markdown("**⚡ OVERDRIVE**")
         st.caption("Hardware-based FPS prediction.")
 
     with c3:
+
         st.markdown("**🧬 Gaming DNA**")
         st.caption("Understand your gaming preferences.")
 
@@ -560,7 +876,10 @@ if page == "Dashboard":
 
     c1, c2, c3 = st.columns(3)
 
-    c1.metric("TOTAL GAMES", len(games))
+    c1.metric(
+        "TOTAL GAMES",
+        len(games)
+    )
 
     c2.metric(
         "CATEGORIES",
@@ -568,9 +887,13 @@ if page == "Dashboard":
     )
 
     unique_subgenres = {
+
         genre
+
         for value in catalogue_df["subgenre"]
+
         for genre in split_values(value)
+
     }
 
     c3.metric(
@@ -592,11 +915,14 @@ elif page == "Game Discovery":
     if selected_name:
 
         game = next(
+
             (
                 item for item in games
                 if item["name"] == selected_name
             ),
+
             None
+
         )
 
         if game:
@@ -637,10 +963,15 @@ elif page == "Game Discovery":
                 st.write(" • ".join(game["tags"]))
 
                 st.markdown("**Gameplay Characteristics**")
+
                 st.write(
+
                     " • ".join(game["gameplay"])
+
                     if game["gameplay"]
+
                     else "Not specified"
+
                 )
 
                 if st.button("ADD TO WATCHLIST"):
@@ -704,9 +1035,13 @@ elif page == "Game Discovery":
             )
 
             visible_recommendations = (
+
                 recommendations
+
                 if show_all
+
                 else recommendations[:5]
+
             )
 
             for rank, item in enumerate(
@@ -715,7 +1050,9 @@ elif page == "Game Discovery":
             ):
 
                 game = item["game"]
+
                 score = item["score"]
+
                 aligned = item["aligned"]
 
                 with st.container(border=True):
@@ -742,17 +1079,29 @@ elif page == "Game Discovery":
 
                         st.progress(score / 100)
 
-                        if aligned:
+                        with st.expander("WHY THIS GAME?"):
+
+                            for reason in item["reasons"]:
+
+                                st.markdown(
+                                    f"- {reason}"
+                                )
 
                             st.caption(
-                                "Strong alignment: "
-                                + ", ".join(aligned)
-                            )
 
-                        else:
+                                "Match breakdown: "
 
-                            st.caption(
-                                "A broader match based on your preferences."
+                                + " | ".join(
+
+                                    f"{label}: {value}%"
+
+                                    for label, value
+                                    in item["breakdown"].items()
+
+                                    if value is not None
+
+                                )
+
                             )
 
                         st.button(
@@ -786,7 +1135,9 @@ elif page == "Game Discovery":
         )
 
         categories = [
+
             "All Categories"
+
         ] + sorted(
             catalogue_df["category"].unique().tolist()
         )
@@ -797,9 +1148,13 @@ elif page == "Game Discovery":
         )
 
         all_genres = sorted({
+
             genre
+
             for value in catalogue_df["subgenre"]
+
             for genre in split_values(value)
+
         })
 
         genre_options = ["All Genres"] + all_genres
@@ -814,21 +1169,32 @@ elif page == "Game Discovery":
         for game in games:
 
             matches_search = (
+
                 search.lower() in (
+
                     game["name"] + " " +
                     " ".join(game["tags"])
+
                 ).lower()
+
                 if search else True
+
             )
 
             matches_category = (
+
                 selected_category == "All Categories"
+
                 or selected_category == game["category"]
+
             )
 
             matches_genre = (
+
                 selected_genre == "All Genres"
+
                 or selected_genre in game["subgenres"]
+
             )
 
             if (
@@ -897,6 +1263,7 @@ elif page == "Game Discovery":
         if st.session_state.watchlist:
 
             for name in st.session_state.watchlist:
+
                 st.write(f"🎮 {name}")
 
         else:
@@ -1028,6 +1395,26 @@ elif page == "Gaming DNA":
         default=dna.get("genres", [])
     )
 
+    available_subgenres = sorted({
+
+        subgenre
+
+        for game in games
+
+        for subgenre in game.get("subgenres", [])
+
+    })
+
+    favourite_subgenres = st.multiselect(
+        "Any favourite subgenres? (Optional)",
+        available_subgenres,
+        default=[
+            item for item in dna.get("subgenres", [])
+            if item in available_subgenres
+        ],
+        help="These options come directly from your game catalogue."
+    )
+
     favourite_game = st.text_input(
         "Favourite Game",
         value=dna.get("favourite_game", ""),
@@ -1085,6 +1472,8 @@ elif page == "Gaming DNA":
 
             "genres": favourite_genres,
 
+            "subgenres": favourite_subgenres,
+
             "favourite_game": favourite_game,
 
             "preferences": preferences,
@@ -1116,6 +1505,14 @@ elif page == "Gaming DNA":
         st.write(
             ", ".join(dna["genres"])
             if dna["genres"]
+            else "Not specified"
+        )
+
+        st.markdown("**Favourite Subgenres**")
+
+        st.write(
+            ", ".join(dna.get("subgenres", []))
+            if dna.get("subgenres")
             else "Not specified"
         )
 
@@ -1194,6 +1591,7 @@ elif page == "Deals":
     if st.session_state.watchlist:
 
         for name in st.session_state.watchlist:
+
             st.write(f"🎮 {name}")
 
     else:
